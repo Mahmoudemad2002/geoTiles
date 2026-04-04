@@ -1,0 +1,33 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    environment:
+      POSTGRES_DB: geojson
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  geojson-service:
+    build: ./geojson-service
+    depends_on:
+      - postgres
+    ports:
+      - "7532:7532"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/geojson
+    volumes:
+      - ./geojson-service/uploads:/app/uploads
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:7532
+
+volumes:
+  postgres_data:
