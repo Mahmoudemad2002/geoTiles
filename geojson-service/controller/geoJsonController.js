@@ -1,7 +1,7 @@
-import fs from 'fs'
-import { uploadDir } from '../provider.js'
 import * as geoJsonService from '../service/geoJsonService.js'
 import multer from 'multer'
+import fs from 'fs'
+import { uploadDir } from '../provider.js'
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
@@ -21,39 +21,43 @@ export const upload = multer({
 })
 
 export async function uploadGeoJson(req, res) {
+  console.log('uploadGeoJson request received')
   if (!req.file) {
+    console.log('uploadGeoJson missing file')
     return res.status(400).json({ message: 'No file' })
   }
 
-  let parsed
+  console.log('uploadGeoJson file path:', req.file.path)
+  const tableName = `geo_${Date.now()}`
   try {
-    const content = fs.readFileSync(req.file.path, 'utf-8')
-    parsed = JSON.parse(content)
-  } catch (err) {
-    return res.status(400).json({ message: 'Invalid JSON' })
-  }
+    await geoJsonService.importGeoJson(req.file.path, tableName)
 
-  if (!parsed.type || parsed.type !== 'FeatureCollection' || !Array.isArray(parsed.features)) {
-    return res.status(400).json({ message: 'Must be FeatureCollection' })
-  }
-
-  try {
-    const featureCount = await geoJsonService.importGeoJson(parsed)
+    console.log('uploadGeoJson imported into table:', tableName)
     return res.json({
-      message: 'ok',
-      featureCount,
-      geojson: parsed,
+      message: 'Imported successfully',
+      fileId: tableName,
     })
   } catch (err) {
-    console.error('upload error', err)
-    return res.status(500).json({ message: 'DB insert error', error: err.message })
+    console.error('uploadGeoJson failed', err)
+    return res.status(500).json({ message: 'Import failed', error: err.message })
   }
 }
 
 export async function getTile(req, res) {
-  const { z, x, y } = req.params
+  const { fileId, z, x, y } = req.params
+  console.log('getTile request', { fileId, z, x, y })
+
+  const zi = Number(z)
+  const xi = Number(x)
+  const yi = Number(y)
+
+  if ([zi, xi, yi].some((n) => Number.isNaN(n))) {
+    console.log('getTile invalid tile coords', { z, x, y })
+    return res.status(400).send('Invalid tile coord')
+  }
+
   try {
-    const tile = await geoJsonService.getTileBuffer(Number(z), Number(x), Number(y))
+    const tile = await geoJsonService.getTileBuffer(fileId, zi, xi, yi)
     if (!tile) {
       res.setHeader('Content-Type', 'application/x-protobuf')
       return res.status(204).send()
@@ -61,20 +65,23 @@ export async function getTile(req, res) {
     res.setHeader('Content-Type', 'application/x-protobuf')
     return res.send(tile)
   } catch (err) {
-    console.error('tile error', err)
+    console.error('getTile failed', err)
     return res.status(500).send('tile generation failed')
   }
 }
 
 export async function getBounds(req, res) {
+  const { fileId } = req.params
+  console.log('getBounds request', fileId)
+
   try {
-    const bounds = await geoJsonService.getBounds()
+    const bounds = await geoJsonService.getBounds(fileId)
     if (!bounds) {
       return res.json({ hasData: false })
     }
     return res.json({ hasData: true, bounds })
   } catch (err) {
-    console.error('bounds fail', err)
+    console.error('getBounds failed', err)
     return res.status(500).json({ error: 'Could not get bounds' })
   }
 }

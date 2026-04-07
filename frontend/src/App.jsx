@@ -2,14 +2,27 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import axios from 'axios'
-import { Box, Button, Container, Paper, Stack, Typography } from '@mui/material'
+import {
+  Box,
+  Button,
+  Container,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableRow,
+  Typography,
+} from '@mui/material'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:7532'
-const TILE_URL = `${API_BASE}/tiles/{z}/{x}/{y}.pbf`
 
 function App() {
+  const [fileId, setFileId] = useState(null)
   const [fileName, setFileName] = useState('No file selected')
   const [status, setStatus] = useState('Waiting for GeoJSON upload')
+  const [selectedFeature, setSelectedFeature] = useState(null)
   const mapRef = useRef(null)
   const mapContainerId = useMemo(() => 'maplibre-map', [])
 
@@ -40,12 +53,28 @@ function App() {
     mapRef.current = map
 
     map.on('load', () => {
-      if (map.getSource('geojson-tile')) map.removeLayer('geojson-fill')
-      if (map.getSource('geojson-tile')) map.removeSource('geojson-tile')
+      console.log('Map loaded')
+    })
 
+    return () => {
+      if (map) map.remove()
+    }
+  }, [mapContainerId])
+
+  useEffect(() => {
+    if (!mapRef.current || !fileId) return
+
+    const map = mapRef.current
+    const tileUrl = `${API_BASE}/tiles/${fileId}/{z}/{x}/{y}.pbf?ts=${Date.now()}`
+
+    console.log('Updating tile source for fileId', fileId, tileUrl)
+
+    if (map.getSource('geojson-tile')) {
+      map.getSource('geojson-tile').setTiles([tileUrl])
+    } else {
       map.addSource('geojson-tile', {
         type: 'vector',
-        tiles: [TILE_URL],
+        tiles: [tileUrl],
         minzoom: 0,
         maxzoom: 14,
       })
@@ -72,26 +101,42 @@ function App() {
           'line-width': 2,
         },
       })
+    }
+
+    map.once('idle', () => {
+      fitToBounds(fileId)
     })
+  }, [fileId])
+
+  useEffect(() => {
+    if (!mapRef.current) return
+
+    const map = mapRef.current
+    const onClick = (event) => {
+      const features = map.queryRenderedFeatures(event.point, {
+        layers: ['geojson-fill'],
+      })
+      const feature = features?.[0]
+      setSelectedFeature(feature?.properties || null)
+    }
+
+    map.on('click', 'geojson-fill', onClick)
 
     return () => {
-      if (map) map.remove()
+      map.off('click', 'geojson-fill', onClick)
     }
-  }, [mapContainerId])
+  }, [fileId])
 
-  const updateMapTiles = () => {
-    if (mapRef.current?.getSource('geojson-tile')) {
-      mapRef.current
-        .getSource('geojson-tile')
-        .setTiles([`${TILE_URL}?ts=${Date.now()}`])
-    }
-  }
+  const fitToBounds = async (targetFileId) => {
+    const id = targetFileId || fileId
+    if (!id || !mapRef.current) return
 
-  const fitToBounds = async () => {
     try {
-      const r = await axios.get(`${API_BASE}/bounds`)
+      console.log('Requesting bounds for', id)
+      const r = await axios.get(`${API_BASE}/bounds/${id}`)
       if (r.data?.hasData && mapRef.current) {
         const [minx, miny, maxx, maxy] = r.data.bounds
+        console.log('Bounds received', r.data.bounds)
         mapRef.current.fitBounds(
           [
             [minx, miny],
@@ -115,6 +160,9 @@ function App() {
 
     setFileName(file.name)
     setStatus('Uploading GeoJSON...')
+    setSelectedFeature(null)
+    console.log('Uploading file', file.name)
+
     const formData = new FormData()
     formData.append('geojson', file)
 
@@ -123,10 +171,13 @@ function App() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
 
-      setStatus(`Upload success: ${resp.data.featureCount} features`)
-      updateMapTiles()
-      await fitToBounds()
+      const id = resp.data.fileId
+      console.log('Upload response', resp.data)
+      setFileId(id)
+      setStatus(`Upload success: ${resp.data.message}`)
+      await fitToBounds(id)
     } catch (err) {
+      console.error('Upload failed', err)
       setStatus(`Upload failed: ${err?.response?.data?.message || err.message}`)
     }
   }
@@ -151,6 +202,9 @@ function App() {
             <Typography variant="body2" color="text.secondary">
               {status}
             </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {fileId ? `fileId: ${fileId}` : 'No active dataset'}
+            </Typography>
           </Stack>
         </Paper>
       </Container>
@@ -160,13 +214,39 @@ function App() {
           id={mapContainerId}
           sx={{
             width: '100%',
-            height: 'calc(100vh - 200px)',
+            height: 'calc(100vh - 240px)',
             borderRadius: 2,
             border: '1px solid',
             borderColor: 'divider',
             overflow: 'hidden',
           }}
         />
+      </Container>
+
+      <Container maxWidth="lg" sx={{ mt: 2 }}>
+        <Paper elevation={3} sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Feature properties
+          </Typography>
+          {selectedFeature ? (
+            <TableContainer>
+              <Table>
+                <TableBody>
+                  {Object.entries(selectedFeature).map(([key, value]) => (
+                    <TableRow key={key}>
+                      <TableCell sx={{ fontWeight: 'bold' }}>{key}</TableCell>
+                      <TableCell>{value === null ? 'null' : String(value)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Click a feature on the map to see its properties.
+            </Typography>
+          )}
+        </Paper>
       </Container>
     </Box>
   )
