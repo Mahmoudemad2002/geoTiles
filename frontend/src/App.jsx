@@ -65,7 +65,7 @@ function App() {
     if (!mapRef.current || !fileId) return
 
     const map = mapRef.current
-    const tileUrl = `${API_BASE}/tiles/${fileId}/{z}/{x}/{y}.pbf?ts=${Date.now()}`
+    const tileUrl = `${API_BASE}/tiles/${fileId}/{z}/{x}/{y}.pbf`
 
     console.log('Updating tile source for fileId', fileId, tileUrl)
 
@@ -112,17 +112,25 @@ function App() {
     if (!mapRef.current) return
 
     const map = mapRef.current
+    const onMove = (event) => {
+      const features = map.queryRenderedFeatures(event.point, {
+        layers: ['geojson-fill'],
+      })
+      map.getCanvas().style.cursor = features.length ? 'pointer' : ''
+    }
+
     const onClick = (event) => {
       const features = map.queryRenderedFeatures(event.point, {
         layers: ['geojson-fill'],
       })
-      const feature = features?.[0]
-      setSelectedFeature(feature?.properties || null)
+      setSelectedFeature(features?.[0]?.properties || null)
     }
 
+    map.on('mousemove', 'geojson-fill', onMove)
     map.on('click', 'geojson-fill', onClick)
 
     return () => {
+      map.off('mousemove', 'geojson-fill', onMove)
       map.off('click', 'geojson-fill', onClick)
     }
   }, [fileId])
@@ -228,6 +236,7 @@ function App() {
           <Typography variant="h6" gutterBottom>
             Feature properties
           </Typography>
+
           {selectedFeature ? (
             <TableContainer>
               <Table>

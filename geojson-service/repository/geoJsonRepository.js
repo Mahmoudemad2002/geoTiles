@@ -126,6 +126,7 @@ export async function getTile(fileId, z, x, y) {
         g.*
       FROM ${safeName} AS g
       JOIN bounds AS b ON ST_Intersects(g.geom, b.bgeom)
+      WHERE g.geom IS NOT NULL
     )
     SELECT ST_AsMVT(mvtgeom, 'geojson_layer', 4096, 'mvt_geom') AS tile
     FROM mvtgeom;
