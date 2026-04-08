@@ -19,3 +19,15 @@ export async function initDb() {
     CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;
   `)
 }
+
+
+/*
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+This ensures that the postgis extension is installed in the database.
+postgis adds spatial capabilities to PostgreSQL, allowing the database to store and query geographic data (e.g., points, polygons, etc.).
+CREATE EXTENSION IF NOT EXISTS postgis_tiger_geocoder;
+
+This ensures that the postgis_tiger_geocoder extension is installed.
+This extension provides geocoding capabilities, which means it can convert addresses into geographic coordinates (latitude and longitude).
+*/

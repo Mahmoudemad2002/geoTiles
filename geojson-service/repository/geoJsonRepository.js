@@ -25,6 +25,9 @@ function buildOgr2ogrPgConnection(databaseUrl) {
 
   return `PG:host=${host} port=${port} user=${user} password=${password} dbname=${dbname}`
 }
+//Constructs a PostgreSQL connection string in the format required by ogr2ogr.
+
+
 
 async function createSpatialIndex(tableName) {
   const safeName = sanitizeTableName(tableName)
@@ -107,6 +110,21 @@ export async function getTile(fileId, z, x, y) {
 
   const tolerance = simplifyTolerance(z)
 
+
+//SELECT ST_Transform(ST_TileEnvelope($1, $2, $3), 4326) AS bgeom
+
+//computes the geographic box for the requested tile.
+//ST_Transform(..., 4326) converts that box into WGS84 latitude/longitude.
+
+
+
+//.................
+
+/*
+mvtgeom AS (...)
+This part selects only the features that intersect the tile, prepares them for vector tile encoding, 
+and creates a tile-ready geometry column.
+*/
   const sql = `
     WITH bounds AS (
       SELECT ST_Transform(ST_TileEnvelope($1, $2, $3), 4326) AS bgeom
